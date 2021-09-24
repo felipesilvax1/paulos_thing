@@ -1,0 +1,99 @@
+
+
+Configure do ASA 5506
+01 - Definir as configurações básicas no dispositivo ASA.
+Acessar modo de configuração global
+configure terminal
+
+a. configurar senha para acesso ao modo privilegiado
+ciscoasa(config)#enable password cisco
+
+b. Configure o nome de domínio como netsec.com.
+HQ-ASA5506(config)#domain-name netsec.com
+
+c. Configure o nome do host como HQ-ASA5506.
+HQ-ASA5506(config)#hostname HQ-ASA5506
+
+
+d. Configure as interfaces INTERNA, INTERNET e DMZ com o seguinte:
+Endereço IP 209.165.200.253/28, nameif INTERNET, nível de segurança 1, atribuir a G1 / 1
+HQ-ASA5506(config)#interface g1/1
+HQ-ASA5506(config-if)#nameif INTERNET
+HQ-ASA5506(config-if)#security-level 1
+HQ-ASA5506(config-if)#ip address 209.165.200.253 255.255.255.240
+HQ-ASA5506(config-if)#no shutdown
+
+Endereço IP 192.168.10.1/24, nameif INTERNA, nível de segurança 100, atribuir a G1 / 2
+HQ-ASA5506(config)#interface g1/2
+HQ-ASA5506(config-if)#nameif INTERNA
+HQ-ASA5506(config-if)#security-level 100
+HQ-ASA5506(config-if)#ip address 192.168.10.1 255.255.255.0
+HQ-ASA5506(config-if)#no shutdown 
+
+Endereço IP 192.168.20.1/24, nameif DMZ, nível de segurança 70, atribuir a G1 / 3
+HQ-ASA5506(config-if)#nameif DMZ
+HQ-ASA5506(config-if)#security-level 70
+HQ-ASA5506(config-if)#ip address 192.168.20.1 255.255.255.0
+HQ-ASA5506(config-if)#no shutdown
+
+02 - Configurar o serviço DHCP no dispositivo ASA para a rede INTERNA.
+a. Faixa DHCP é 192.168.10.25 - 192.168.10.35.
+HQ-ASA5506(config)#dhcpd address 192.168.10.25-192.168.10.35 INTERNA
+
+b. O serviço DHCP deve fornecer informações do servidor DNS (servidor AAA / NTP / syslog).
+HQ-ASA5506(config)#dhcpd dns 192.168.10.10 interface INTERNA
+HQ-ASA5506(config)#dhcpd option 3 ip 192.168.10.1
+HQ-ASA5506(config)#dhcpd enable INTERNA
+
+c. PC0, PC1 e PC2 devem receber seus endereços por DHCP.
+
+03 - Configurar o roteamento no ASA.
+Configure uma rota padrão que permitirá que os hosts nas redes HQ INTERNAL e DMZ se comuniquem com hosts externos. 
+Use o endereço IP da interface do roteador HQ como a interface do gateway.
+HQ-ASA5506(config)#route INTERNET 0.0.0.0 0.0.0.0 209.165.200.254
+
+04 - Configure o gerenciamento de rede seguro para o dispositivo ASA.
+Configure o ASA com NTP e AAA:
+Servidor NTP 192.168.10.10
+
+1. O ASA é um cliente NTP ao servidor AAA / NTP / Syslog.
+2. Habilite a autenticação ao ASA.
+Q-ASA5506(config)#ntp authenticate
+
+3. A chave de autenticação é a chave 1 e a senha é netsec.
+HQ-ASA5506(config)#ntp authentication-key 1 md5 netsec
+
+
+05 - Configure AAA e SSH.
+1. Configure o dispositivo ASA com autenticação AAA usando o nome de usuário CoelhoAdmin e a senha adminpass01.
+HQ-ASA5506(config)#username CoelhoAdmin password adminpass01
+
+2. Configure o AAA para usar o banco de dados local para conexões SSH à porta do console.
+HQ-ASA5506(config)#aaa authentication ssh console LOCAL
+
+3. Gere um par de chaves RSA para suportar com tamanho de módulo de 1024 bits.
+HQ-ASA5506(config)#crypto key generate rsa modulus 1024
+yes
+4. Configure HQ-ASA5506 para aceitar conexões SSH somente da estação de trabalho NetAdmin.
+HQ-ASA5506(config)#ssh 192.168.10.250 255.255.255.255 INTERNA
+
+5. Configure o tempo limite da sessão SSH para 20 minutos.
+HQ-ASA5506(config)#ssh timeout 20
+
+
+06 - Configurar o serviço NAT para o dispositivo ASA para redes INTERNA e DMZ.
+
+a. Crie um objeto de rede denominado INTERNA-nat com a sub-rede 192.168.10.0/24 e habilite os endereços IP dos hosts na rede interna a serem traduzidos dinamicamente para acessar a rede externa por meio da interface externa.
+HQ-ASA5506(config)#object network INTERNA-nat
+HQ-ASA5506(config-network-object)#subnet 192.168.10.0 255.255.255.0
+HQ-ASA5506(config-network-object)#nat (INTERNA,INTERNET) dynamic interface
+
+b. Crie um objeto de rede DMZ-web-server para traduzir estaticamente o endereço IP interno do servidor 192.168.20.2 web DMZ para o endereço IP público externo 209.165.200.241.
+HQ-ASA5506(config)#object network DMZ-web-server
+HQ-ASA5506(config-network-object)#host 192.168.20.2
+HQ-ASA5506(config-network-object)#nat (DMZ,INTERNET) static 209.165.200.241
+
+c. Crie um objeto de rede DMZ-dns-server para traduzir estaticamente o endereço IP interno do servidor DMZ DNS 192.168.20.5 para o endereço IP público externo 209.165.200.242.
+HQ-ASA5506(config)#object network DMZ-dns-server
+HQ-ASA5506(config-network-object)#host 192.168.20.5
+HQ-ASA5506(config-network-object)#nat (DMZ,INTERNET) static 209.165.200.242
